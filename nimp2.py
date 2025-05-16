@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import Canvas, Toplevel
 from PIL import Image, ImageTk
 
+
 class Nimp2(tk.Frame):
     def __init__(self, parent, controller, images, rotations):
         super().__init__(parent, bg='#1a1a1a')
@@ -16,17 +17,21 @@ class Nimp2(tk.Frame):
 
         self.preview_labels = []
         self.choose_buttons = []
+        self.anchor_labels = []
+        self.reset_buttons = []
 
+        # Build UI for 4 photos
         for col in range(4):
             if images[col] is not None:
                 # Apply rotation
-                rotated_img = images[col].rotate(self.rotations[col], expand=True)
+                rotated_img = images[col].rotate(rotations[col], expand=True)
                 self.images[col] = rotated_img
 
                 # Preview Frame
-                preview_frame = tk.Frame(self.main_frame, bg='#1a1a1a', width=360, height=640)
+                preview_frame = tk.Frame(self.main_frame, bg='#1a1a1a', width=360, height=640, 
+                                         highlightthickness=2, highlightbackground='#1a1a1a')
                 preview_frame.grid(row=0, column=col, padx=20, pady=10)
-                preview_frame.pack_propagate(False)
+                preview_frame.grid_propagate(False)
 
                 # Image Preview
                 img_resized = self.resize_image(rotated_img, 360, 640)
@@ -36,18 +41,46 @@ class Nimp2(tk.Frame):
                 preview_label.pack(fill='both', expand=True)
                 self.preview_labels.append(preview_label)
 
+                # Anchor Point Info
+                anchor_label = tk.Label(self.main_frame, text="Anchor Point: None", 
+                                        font=('Helvetica', 14), bg='#1a1a1a', fg='gray')
+                anchor_label.grid(row=1, column=col, pady=(0, 5))
+                self.anchor_labels.append(anchor_label)
+
                 # Choose Anchor Button
                 choose_button = tk.Button(self.main_frame, text='Choose Anchor Point', 
                                           command=lambda idx=col: self.open_anchor_selector(idx), 
                                           font=('Helvetica', 14), bg='#444', fg='white', width=20, bd=0)
-                choose_button.grid(row=1, column=col, pady=10)
+                choose_button.grid(row=2, column=col, pady=(0, 5))
                 self.choose_buttons.append(choose_button)
 
+                # Reset Anchor Button
+                reset_button = tk.Button(self.main_frame, text='Reset Anchor Point', 
+                                         command=lambda idx=col: self.reset_anchor_point(idx),
+                                         font=('Helvetica', 14), bg='#555', fg='white', width=20, bd=0)
+                reset_button.grid(row=3, column=col, pady=(0, 10))
+                self.reset_buttons.append(reset_button)
+
+        # Bottom fixed frame for Back, Reset All, and Next buttons
+        self.bottom_frame = tk.Frame(self, bg='#1a1a1a')
+        self.bottom_frame.place(relx=0.5, rely=1.0, anchor='s', y=-20)
+
+        # Back Button
+        self.back_button = tk.Button(self.bottom_frame, text='Back', 
+                                     command=lambda: controller.show_frame("Nimp1"),
+                                     font=('Helvetica', 18, 'bold'), bg='#666', fg='white', width=15, bd=0)
+        self.back_button.pack(side='left', padx=20)
+
+        # Reset All Button
+        self.reset_all_btn = tk.Button(self.bottom_frame, text='Reset All', command=self.reset_all_anchor_points,
+                                       font=('Helvetica', 18, 'bold'), bg='#aa4444', fg='white', width=15, bd=0)
+        self.reset_all_btn.pack(side='left', padx=20)
+
         # Next Button
-        self.next_button = tk.Button(self.main_frame, text='Next', 
+        self.next_button = tk.Button(self.bottom_frame, text='Next', 
                                      command=self.next_menu, font=('Helvetica', 18, 'bold'), 
-                                     bg='#5577cc', fg='white', width=20, bd=0)
-        self.next_button.grid(row=2, column=0, columnspan=4, pady=20)
+                                     bg='#5577cc', fg='white', width=15, bd=0)
+        self.next_button.pack(side='left', padx=20)
 
     def resize_image(self, img, target_width, target_height):
         img_w, img_h = img.size
@@ -59,6 +92,9 @@ class Nimp2(tk.Frame):
         anchor_window = Toplevel(self)
         anchor_window.attributes('-fullscreen', True)
         anchor_window.configure(bg='black')
+        
+        # Hide mouse pointer
+        anchor_window.config(cursor="none")
         
         # Create a Canvas for zoom and pan
         canvas = Canvas(anchor_window, bg='black')
@@ -93,54 +129,46 @@ class Nimp2(tk.Frame):
 
         # Save anchor point on click
         def save_anchor(event):
-            # Convert to image coordinates
             img_x = (event.x - self.img_offset[0]) / self.scale_factor
             img_y = (event.y - self.img_offset[1]) / self.scale_factor
             self.anchor_points[index] = (img_x, img_y)
-            print(f"Anchor Point for Photo {index+1} set to: ({img_x}, {img_y})")
+            self.anchor_labels[index].config(text=f"Anchor Point: ({int(img_x)}, {int(img_y)})", fg='white')
             anchor_window.destroy()
 
-        # Movement with WASD and Arrow Keys
-        def move_image(dx, dy):
-            self.img_offset[0] += dx
-            self.img_offset[1] += dy
-            canvas.move(image_id, dx, dy)
-
-        # Bind movement keys
+        # Bind keys for movement and zoom
         def on_key_press(event):
             step = 10
             if event.keysym in ['w', 'Up']:
-                move_image(0, -step)
+                canvas.move(image_id, 0, -step)
             elif event.keysym in ['s', 'Down']:
-                move_image(0, step)
+                canvas.move(image_id, 0, step)
             elif event.keysym in ['a', 'Left']:
-                move_image(-step, 0)
+                canvas.move(image_id, -step, 0)
             elif event.keysym in ['d', 'Right']:
-                move_image(step, 0)
+                canvas.move(image_id, step, 0)
             elif event.keysym == '=':
                 zoom(1.1)
             elif event.keysym == '-':
                 zoom(0.9)
 
-        # Zoom and pan
+        # Zoom function
         def zoom(scale):
             self.scale_factor *= scale
             canvas.scale('all', screen_w // 2, screen_h // 2, scale, scale)
-            canvas.configure(scrollregion=canvas.bbox('all'))
 
-        # Shift + Scroll Zoom
-        def on_scroll(event):
-            if event.state & 0x0001:  # Shift key is pressed
-                scale = 1.1 if event.delta > 0 else 0.9
-                zoom(scale)
-
-        # Mouse bindings
+        # Bind events
         canvas.bind('<Motion>', update_crosshair)
         canvas.bind('<Button-1>', save_anchor)
-        canvas.bind("<MouseWheel>", on_scroll)
         anchor_window.bind("<KeyPress>", on_key_press)
         anchor_window.focus_set()
 
+    def reset_anchor_point(self, index):
+        self.anchor_points[index] = None
+        self.anchor_labels[index].config(text="Anchor Point: None", fg='gray')
+
+    def reset_all_anchor_points(self):
+        for i in range(4):
+            self.reset_anchor_point(i)
+
     def next_menu(self):
-        # Placeholder for the next page
-        print("Next page coming soon...")
+        print("Next...")
